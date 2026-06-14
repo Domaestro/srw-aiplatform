@@ -1,0 +1,130 @@
+# MLflow Tracking Server values, community-charts/mlflow 1.8.1.
+#
+# Backend store : in-cluster PostgreSQL (deployed in Iter 2.3).
+# Artifact store: in-cluster MinIO bucket 'mlflow-artifacts' over TLS, signed by
+#                 the platform CA. Service-user 'mlflow-svc' with bucket-scoped policy
+#                 is provisioned by scripts/06_provision_minio_users.sh.
+# Auth          : disabled at MLflow level; access control is enforced upstream by
+#                 oauth2-proxy (Iter 4).
+# Use the chart's default image (burakince/mlflow) — it ships with psycopg2 and other
+# database drivers pre-installed. The upstream ghcr.io/mlflow/mlflow image is minimal
+# and would require an extra pip-install step.
+image:
+  pullPolicy: IfNotPresent
+
+nodeSelector:
+  node-role.aiplatform/system: "true"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+# This chart uses 'securityContext' (not 'containerSecurityContext') for the container.
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: false
+  seccompProfile:
+    type: RuntimeDefault
+
+backendStore:
+  databaseMigration: true
+  # databaseConnectionCheck is disabled because chart 1.8.1 emits a 'dbchecker' init
+  # container without an explicit securityContext, which violates restricted-PSA.
+  # The 'mlflow-db-migration' init container, in contrast, inherits values.securityContext
+  # and is therefore PSA-compliant. PostgreSQL is brought up before MLflow by Iter 2.3,
+  # so the readiness check is not strictly required.
+  databaseConnectionCheck: false
+  postgres:
+    enabled: true
+    host: postgres.mlflow.svc.cluster.local
+    port: 5432
+    database: mlflow
+    # NOTE: chart 1.8.1 does not expose existingSecret for backendStore.postgres
+    # (the YAML field is documented in values.yaml but rejected by values.schema.json).
+    # We therefore inject user/password via 'helm --set-string' in 07_install_mlflow.sh
+    # so they never appear in the version-controlled values file.
+    user: ""
+    password: ""
+
+artifactRoot:
+  proxiedArtifactStorage: true
+  s3:
+    enabled: true
+    bucket: mlflow-artifacts
+    awsAccessKeyId: ""     # ignored when existingSecret is set
+    awsSecretAccessKey: ""
+    existingSecret:
+      name: mlflow-s3-credentials
+      keyOfAccessKeyId: AWS_ACCESS_KEY_ID
+      keyOfSecretAccessKey: AWS_SECRET_ACCESS_KEY
+
+# Point boto3 at the in-cluster MinIO endpoint and at the CA bundle that signs
+# its TLS certificate.
+extraEnvVars:
+  MLFLOW_S3_ENDPOINT_URL: "https://minio.minio.svc.cluster.local:9000"
+  AWS_CA_BUNDLE: "/etc/ssl/aiplatform/ca.crt"
+  REQUESTS_CA_BUNDLE: "/etc/ssl/aiplatform/ca.crt"
+  TMPDIR: "/tmp/mlflow"
+
+# MLflow 3.x ships a security middleware that defaults to localhost-only access and
+# blocks the kubelet liveness/readiness probes (which hit Pod-IP, not localhost).
+# These CLI flags widen the trust scope to in-cluster clients; external access is
+# locked down one layer up by oauth2-proxy (Iter 4).
+# Chart maps camelCase keys to kebab-case flags: allowedHosts -> --allowed-hosts.
+extraArgs:
+  allowedHosts: "*"
+  corsAllowedOrigins: "*"
+
+# Disable the chart's automatic --gunicorn-opts injection: MLflow 3.x's security
+# middleware flags (--allowed-hosts, --cors-allowed-origins) are only valid with
+# the default uvicorn server. Leaving log.enabled=true forces gunicorn args and
+# breaks the server startup.
+log:
+  enabled: false
+
+extraVolumes:
+  - name: ca-bundle
+    secret:
+      secretName: aiplatform-ca
+      items:
+        - key: ca.crt
+          path: ca.crt
+  - name: tmp
+    emptyDir: {}
+
+extraVolumeMounts:
+  - name: ca-bundle
+    mountPath: /etc/ssl/aiplatform
+    readOnly: true
+  - name: tmp
+    mountPath: /tmp
+
+service:
+  type: ClusterIP
+  port: 5000
+
+ingress:
+  enabled: false
+
+serviceAccount:
+  create: true
+  name: mlflow
+
+serviceMonitor:
+  enabled: false

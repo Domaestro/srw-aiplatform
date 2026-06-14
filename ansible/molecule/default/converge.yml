@@ -1,0 +1,6 @@
+---
+# Шаг converge: разворачивает прототип основным плейбуком.
+# Шаг idempotence Molecule повторно выполняет этот же плейбук и завершается
+# с ошибкой, если хотя бы одна задача вернёт состояние changed.
+- name: Converge
+  import_playbook: ../../playbooks/site.yaml

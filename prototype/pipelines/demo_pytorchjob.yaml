@@ -1,0 +1,74 @@
+# Minimal PyTorchJob for the Training Operator smoke test.
+# Runs a single Master replica (no distributed training to keep RAM low) that
+# performs a tiny PyTorch forward/backward pass on a fake dataset and prints
+# loss after 3 iterations. Demonstrates that the Training CRD is reconciled
+# end-to-end by the operator.
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: demo-pytorch-tiny
+  namespace: team-demo
+spec:
+  runPolicy:
+    cleanPodPolicy: None
+    backoffLimit: 1
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        metadata:
+          labels:
+            workload-type: training
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: pytorch
+              # Slim Python image; torch pulled cpu-only on first run. Smaller
+              # than pytorch/pytorch:*-cuda* (~5 GB), suitable for AMD/no-GPU host.
+              image: python:3.12-slim
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: PYTHONUSERBASE
+                  value: /tmp/.local
+                - name: PATH
+                  value: /tmp/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+              command: ["sh", "-c"]
+              args:
+                - |
+                  pip install --user --quiet --no-cache-dir \
+                      --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
+                  python -c "
+                  import torch
+                  print(f'torch={torch.__version__} cuda_available={torch.cuda.is_available()}')
+                  x = torch.randn(64, 10)
+                  y = torch.randn(64, 1)
+                  model = torch.nn.Linear(10, 1)
+                  opt = torch.optim.SGD(model.parameters(), lr=0.01)
+                  loss_fn = torch.nn.MSELoss()
+                  for step in range(3):
+                      pred = model(x)
+                      loss = loss_fn(pred, y)
+                      opt.zero_grad(); loss.backward(); opt.step()
+                      print(f'step {step}: loss={loss.item():.4f}')
+                  print('training complete')
+                  "
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 512Mi
+                limits:
+                  cpu: "1"
+                  memory: 1Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                capabilities: { drop: ["ALL"] }
+                seccompProfile: { type: RuntimeDefault }

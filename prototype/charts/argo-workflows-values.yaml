@@ -1,0 +1,74 @@
+# Argo Workflows values, chart v1.0.x (Argo Workflows 4.x).
+# Lives in the kubeflow namespace; we will reuse 'kubeflow' as the orchestrator
+# namespace and put per-tenant workflow execution in team-* namespaces.
+controller:
+  replicas: 1
+  workflowNamespaces:
+    - team-demo
+  nodeSelector:
+    node-role.aiplatform/system: "true"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    capabilities:
+      drop: ["ALL"]
+    readOnlyRootFilesystem: true
+    seccompProfile:
+      type: RuntimeDefault
+
+server:
+  enabled: true
+  replicas: 1
+  nodeSelector:
+    node-role.aiplatform/system: "true"
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    capabilities:
+      drop: ["ALL"]
+    readOnlyRootFilesystem: true
+    seccompProfile:
+      type: RuntimeDefault
+  # auth-mode 'server' means the server uses its own service-account permissions
+  # for cluster operations. External auth (UI access) is layered upstream via
+  # oauth2-proxy in a follow-up step.
+  extraArgs:
+    - --auth-mode=server
+
+# Executor runs inside each workflow pod, must be lean and PSA-compliant.
+executor:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+workflow:
+  serviceAccount:
+    create: true
+    name: argo-workflow
+  rbac:
+    create: true
+
+# Use emissary executor (recommended; does not require docker.sock).
+mainContainer:
+  imagePullPolicy: IfNotPresent
+
+# Disable the chart's bundled minio — we have our own at minio/mlflow-artifacts.
+useDefaultArtifactRepo: false

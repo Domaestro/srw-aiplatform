@@ -1,0 +1,22 @@
+# NetworkPolicy permitting only MLflow pods to reach PostgreSQL on port 5432.
+# The egress companion rule (mlflow -> postgres) lives in mlflow-netpol.yaml so
+# all MLflow-related policies remain in a single file.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mlflow-to-postgres
+  namespace: mlflow
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mlflow
+      ports:
+        - protocol: TCP
+          port: 5432

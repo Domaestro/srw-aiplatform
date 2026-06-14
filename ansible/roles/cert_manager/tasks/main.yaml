@@ -1,0 +1,9 @@
+---
+- name: Run 03_install_cert_manager.sh
+  ansible.builtin.shell: "{{ (scripts_dir + '/03_install_cert_manager.sh') | quote }}"
+  register: result
+  changed_when: '"already installed" not in result.stdout'
+
+- name: Display script output (last 20 lines)
+  ansible.builtin.debug:
+    msg: "{{ result.stdout_lines[-20:] if result.stdout_lines | length > 20 else result.stdout_lines }}"

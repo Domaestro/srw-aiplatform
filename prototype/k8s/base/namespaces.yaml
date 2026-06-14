@@ -1,0 +1,100 @@
+# Platform namespaces.
+# Each namespace is labelled with the strictest Pod Security Admission policy applicable.
+# System namespaces (cert-manager, istio-system, kubeflow, monitoring) will be created later
+# by their respective installers and will use the cluster-wide PSA default ('baseline').
+#
+# Tenant namespaces (team-*) are isolated under 'restricted' PSA.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-system
+  labels:
+    aiplatform.local/role: system
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mlflow
+  labels:
+    aiplatform.local/role: system
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minio
+  labels:
+    aiplatform.local/role: system
+    # Trade-off: the official minio/minio chart 5.4.0 ships post-install Job hooks
+    # (minio-make-bucket, minio-make-user) that omit explicit securityContext fields
+    # required by the 'restricted' Pod Security Standard. The main MinIO server pod
+    # itself satisfies 'restricted', so we run the namespace under 'baseline' and
+    # rely on audit/warn at the 'restricted' level. Documented as a known limitation
+    # of the MVP with a planned mitigation (replace the chart hooks by an in-house
+    # Job carrying the required securityContext).
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+  labels:
+    aiplatform.local/role: system
+    # Trade-off: Istio sidecar injection requires an init container 'istio-init'
+    # with NET_ADMIN + NET_RAW + runAsRoot, which is rejected by both 'restricted'
+    # and 'baseline' Pod Security Standards.
+    # The cleaner alternative — istio-cni — requires custom CNI path integration
+    # with k3s and was found unstable in the MVP environment. As a localised
+    # concession we mark only this namespace as 'privileged'; audit/warn remain
+    # at 'restricted' so we still see policy violations from the Keycloak
+    # application itself (which does satisfy restricted on its own).
+    # Production migration path: switch the cluster to istio-cni installed via
+    # istioctl with explicit CNI binary/config paths matching the host OS.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+---
+# Kubeflow Pipelines / Notebooks / Training Operator namespace.
+# Upstream manifests assume PSA 'baseline'; many KFP system pods (mysql init, argo
+# executor, viewer-crd controller) do not declare the strict securityContext fields
+# required by 'restricted'. Audit/warn remain at 'restricted' so we still see any
+# regressions. User-created Notebooks and PipelineRuns are admitted to tenant
+# namespaces (team-*) which keep enforce=restricted.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeflow
+  labels:
+    aiplatform.local/role: system
+    # Istio sidecar injection deliberately disabled here. The Argo Workflows chart
+    # uses Helm pre-install Jobs to register CRDs; with sidecar injection enabled
+    # the istio-proxy keeps running after the main container completes, and Helm
+    # waits for the Job indefinitely. Sidecar can be re-enabled per workload via
+    # pod annotation 'sidecar.istio.io/inject: "true"' when fine-grained mTLS is
+    # required for a specific deployment (e.g., argo-workflows-server UI behind
+    # oauth2-proxy).
+    istio-injection: disabled
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# Demonstration tenant. Future tenants are created by Project Admin via the same template.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-demo
+  labels:
+    aiplatform.local/role: tenant
+    aiplatform.local/tenant: demo
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

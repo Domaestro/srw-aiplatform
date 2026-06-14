@@ -1,0 +1,21 @@
+# Route https://keycloak.aiplatform.local/* through the shared Istio Gateway
+# to the Keycloak Service on port 8080.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  hosts:
+    - keycloak.aiplatform.local
+  gateways:
+    - istio-ingress/aiplatform-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: keycloak.keycloak.svc.cluster.local
+            port:
+              number: 8080

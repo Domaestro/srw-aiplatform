@@ -1,0 +1,74 @@
+# k3d cluster configuration for the secured AI platform prototype.
+# Schema: https://k3d.io/v5.7.4/usage/configfile/
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: aiplatform
+servers: 1
+agents: 2
+image: rancher/k3s:v1.31.4-k3s1
+network: aiplatform-net
+# Disable bundled k3s components we will replace ourselves
+# - traefik:        replaced by Istio ingress gateway in Iter 5
+# - servicelb:      not needed; we will expose only via ingress
+# - metrics-server: provided by kube-prometheus-stack in Iter 6
+options:
+  k3d:
+    wait: true
+    timeout: "180s"
+    disableLoadbalancer: false
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
+      - arg: --disable=servicelb
+        nodeFilters:
+          - server:*
+      - arg: --disable=metrics-server
+        nodeFilters:
+          - server:*
+      - arg: --kube-apiserver-arg=audit-log-path=/var/log/k3s/audit.log
+        nodeFilters:
+          - server:*
+      - arg: --kube-apiserver-arg=audit-log-maxage=30
+        nodeFilters:
+          - server:*
+      - arg: --kube-apiserver-arg=audit-log-maxbackup=10
+        nodeFilters:
+          - server:*
+      - arg: --kube-apiserver-arg=audit-log-maxsize=100
+        nodeFilters:
+          - server:*
+      - arg: --kube-apiserver-arg=audit-policy-file=/etc/k3s/audit-policy.yaml
+        nodeFilters:
+          - server:*
+      - arg: --kube-apiserver-arg=admission-control-config-file=/etc/k3s/psa-config.yaml
+        nodeFilters:
+          - server:*
+ports:
+  # HTTPS ingress (Istio gateway will bind here in Iter 5)
+  - port: 8443:443
+    nodeFilters:
+      - loadbalancer
+  # HTTP ingress (will be used for ACME http-01 challenges if needed, otherwise redirected to HTTPS)
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer
+volumes:
+  # Audit policy and PSA config delivered into the k3s server node
+  - volume: PROTOTYPE_DIR/k8s/security/audit-policy.yaml:/etc/k3s/audit-policy.yaml
+    nodeFilters:
+      - server:*
+  - volume: PROTOTYPE_DIR/k8s/security/psa-config.yaml:/etc/k3s/psa-config.yaml
+    nodeFilters:
+      - server:*
+  # Persistent storage for audit log on the host (read-only mount inside the agent)
+  - volume: PROTOTYPE_DIR/.local/audit-log:/var/log/k3s
+    nodeFilters:
+      - server:*
+# Apply node labels so we can pin workloads
+env:
+  - envVar: K3S_KUBECONFIG_MODE=600
+    nodeFilters:
+      - all

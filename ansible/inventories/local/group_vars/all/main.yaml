@@ -1,0 +1,18 @@
+# Common variables used by every role.
+prototype_dir: "{{ playbook_dir }}/../../prototype"
+scripts_dir:   "{{ prototype_dir }}/scripts"
+
+# Component versions — kept in one place so they can be bumped uniformly.
+versions:
+  k3d:            "v5.7.4"
+  k3s:            "v1.31.4-k3s1"
+  helm:           "v3.16.3"
+  cert_manager:   "v1.16.2"
+  istio:          "1.24.6"
+  minio_chart:    "5.4.0"
+  mlflow_chart:   "1.8.1"
+  oauth2_proxy:   "10.4.3"
+  argo_chart:     "1.0.14"
+  kps_chart:      "85.2.1"
+
+cluster_name: "aiplatform"

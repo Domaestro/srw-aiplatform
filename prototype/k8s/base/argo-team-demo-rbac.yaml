@@ -1,0 +1,40 @@
+# ServiceAccount and Role for Argo workflow executors running in team-demo.
+# The argo-workflows-server is allowed to orchestrate workflows in this namespace
+# because we set 'controller.workflowNamespaces' to include 'team-demo'.
+# Each Workflow uses 'argo-workflow' as its executor identity.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-workflow
+  namespace: team-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-workflow
+  namespace: team-demo
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults", "workflowtasksets/status", "workflowartifactgctasks"]
+    verbs: ["create", "patch", "get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtasksets"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-workflow
+  namespace: team-demo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-workflow
+subjects:
+  - kind: ServiceAccount
+    name: argo-workflow
+    namespace: team-demo

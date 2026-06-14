@@ -1,0 +1,110 @@
+# Keycloak realm template imported on startup.
+# Defines:
+#   - realm 'aiplatform'
+#   - 3 realm roles: project-admin, ml-engineer, viewer
+#   - 3 users: alice (project-admin), bob (ml-engineer), eve (viewer)
+#   - 1 OIDC client 'oauth2-proxy' used by oauth2-proxy in front of MLflow / Kubeflow /
+#     Grafana. The client secret is placeholder here and is overwritten by the
+#     post-install script (kc-rotate-client-secret) to the value persisted under
+#     .local/secrets/oauth2-proxy-client.secret.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aiplatform-realm-template
+  namespace: keycloak
+data:
+  aiplatform-realm.json: |
+    {
+      "realm": "aiplatform",
+      "enabled": true,
+      "sslRequired": "external",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": false,
+      "editUsernameAllowed": false,
+      "bruteForceProtected": true,
+      "roles": {
+        "realm": [
+          {"name": "project-admin", "description": "Full control inside a tenant namespace"},
+          {"name": "ml-engineer",   "description": "Create notebooks / pipelines / training jobs"},
+          {"name": "viewer",        "description": "Read-only access to metrics, logs and metadata"}
+        ]
+      },
+      "users": [
+        {
+          "username": "alice",
+          "firstName": "Alice",
+          "lastName":  "Admin",
+          "email":     "alice@aiplatform.local",
+          "enabled":   true,
+          "emailVerified": true,
+          "credentials": [{"type": "password", "value": "alice-pass",   "temporary": false}],
+          "realmRoles": ["project-admin"]
+        },
+        {
+          "username": "bob",
+          "firstName": "Bob",
+          "lastName":  "ML",
+          "email":     "bob@aiplatform.local",
+          "enabled":   true,
+          "emailVerified": true,
+          "credentials": [{"type": "password", "value": "bob-pass",     "temporary": false}],
+          "realmRoles": ["ml-engineer"]
+        },
+        {
+          "username": "eve",
+          "firstName": "Eve",
+          "lastName":  "Viewer",
+          "email":     "eve@aiplatform.local",
+          "enabled":   true,
+          "emailVerified": true,
+          "credentials": [{"type": "password", "value": "eve-pass",     "temporary": false}],
+          "realmRoles": ["viewer"]
+        }
+      ],
+      "clients": [
+        {
+          "clientId": "oauth2-proxy",
+          "name":     "Platform OAuth2 Proxy",
+          "enabled":  true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "secret": "PLACEHOLDER_REPLACE_ME",
+          "redirectUris": [
+            "https://mlflow.aiplatform.local/oauth2/callback",
+            "https://kubeflow.aiplatform.local/oauth2/callback",
+            "https://grafana.aiplatform.local/oauth2/callback"
+          ],
+          "webOrigins":   ["+"],
+          "standardFlowEnabled": true,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": false,
+          "serviceAccountsEnabled": false,
+          "fullScopeAllowed": true,
+          "attributes": {
+            "saml.assertion.signature": "false",
+            "use.refresh.tokens": "true",
+            "access.token.lifespan": "1800"
+          },
+          "defaultClientScopes": ["web-origins", "roles", "profile", "email"],
+          "optionalClientScopes": ["address", "phone", "offline_access"],
+          "protocolMappers": [
+            {
+              "name": "groups-claim",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-realm-role-mapper",
+              "consentRequired": false,
+              "config": {
+                "multivalued": "true",
+                "userinfo.token.claim": "true",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "claim.name": "groups",
+                "jsonType.label": "String"
+              }
+            }
+          ]
+        }
+      ]
+    }

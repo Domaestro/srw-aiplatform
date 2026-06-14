@@ -1,0 +1,10 @@
+# Local-only inventory: the prototype runs on the host where ansible-playbook is invoked.
+# For multi-host production deployments, replace 'connection: local' with ssh transport
+# and add the target hosts under the 'platform' group.
+all:
+  children:
+    platform:
+      hosts:
+        localhost:
+          ansible_connection: local
+          ansible_python_interpreter: /usr/bin/python3

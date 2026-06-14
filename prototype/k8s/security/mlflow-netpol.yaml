@@ -1,0 +1,90 @@
+# NetworkPolicies for the MLflow pod.
+# Helm chart community-charts/mlflow labels its pods with app.kubernetes.io/name=mlflow.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mlflow-egress-minio
+  namespace: mlflow
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mlflow
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: minio
+          podSelector:
+            matchLabels:
+              app: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+---
+# MLflow must also be allowed to reach the in-namespace Postgres.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mlflow-egress-postgres
+  namespace: mlflow
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mlflow
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mlflow-ingress
+  namespace: mlflow
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mlflow
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}                  # in-namespace clients (e.g. demo job)
+        - namespaceSelector:
+            matchLabels:
+              aiplatform.local/role: tenant
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kubeflow
+      ports:
+        - protocol: TCP
+          port: 5000
+---
+# Egress companion: any pod inside the mlflow namespace may reach the MLflow API.
+# Used by smoke tests and by the post-install verification of MLflow itself.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-mlflow
+  namespace: mlflow
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mlflow
+      ports:
+        - protocol: TCP
+          port: 5000

@@ -1,0 +1,32 @@
+---
+# Сценарий Molecule для тестирования ролей развёртывания платформы.
+# Драйвер default (delegated): жизненным циклом инстанса управляет сам стенд
+# (локальный хост с Docker и k3d), Molecule выполняет converge -> idempotence -> verify.
+dependency:
+  name: galaxy
+driver:
+  name: default
+platforms:
+  - name: localhost
+    groups:
+      - platform
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/roles
+  config_options:
+    defaults:
+      transport: local
+  inventory:
+    links:
+      group_vars: ../../inventories/local/group_vars
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - converge
+    - idempotence
+    - verify

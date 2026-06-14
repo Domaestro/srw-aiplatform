@@ -1,0 +1,95 @@
+# NetworkPolicy: pods in team-demo may reach MLflow (Argo workflow steps log there)
+# and the Istio ingress gateway (which CoreDNS rewrites *.aiplatform.local to).
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-team-demo-egress-mlflow
+  namespace: team-demo
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mlflow
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mlflow
+      ports:
+        - protocol: TCP
+          port: 5000
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-ingress
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+---
+# Argo workflow pods need to talk to Argo server in kubeflow ns for status updates,
+# plus the kube-apiserver for workflowtaskresults patches.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-team-demo-egress-argo
+  namespace: team-demo
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kubeflow
+      ports:
+        - protocol: TCP
+          port: 2746
+        - protocol: TCP
+          port: 9090
+    # kube-apiserver: in k3d, the ClusterIP 10.43.0.1:443 is DNAT'd by kube-proxy
+    # to the control-plane node IP on port 6443. NetworkPolicy ipBlock matches on
+    # the post-DNAT destination, so we must allow the actual node CIDR (k3d's
+    # Docker network 172.19.0.0/16) on port 6443.
+    - to:
+        - ipBlock:
+            cidr: 172.19.0.0/16
+      ports:
+        - protocol: TCP
+          port: 6443
+    # Outbound HTTPS to the public internet for pip / image registries / dataset
+    # mirrors. Tenants can pull dependencies from public sources at training time.
+    # excludes RFC1918 (10/8, 172.16/12, 192.168/16) and the cluster service CIDR
+    # so this rule never weakens in-cluster isolation.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# Mlflow ingress already allowed from any tenant ns (mlflow-netpol.yaml).
+# Add ingress to team-demo from kubeflow (Argo controller pulling pod logs).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kubeflow-ingress-team-demo
+  namespace: team-demo
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kubeflow

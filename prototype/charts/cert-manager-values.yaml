@@ -1,0 +1,53 @@
+# Minimal cert-manager values for the prototype.
+# CRDs are installed via the chart; replicaCount=1 keeps memory footprint low.
+crds:
+  enabled: true
+  keep: true
+replicaCount: 1
+nodeSelector:
+  node-role.aiplatform/system: "true"
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+securityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+
+webhook:
+  replicaCount: 1
+  nodeSelector:
+    node-role.aiplatform/system: "true"
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+cainjector:
+  replicaCount: 1
+  nodeSelector:
+    node-role.aiplatform/system: "true"
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+startupapicheck:
+  enabled: true
+  nodeSelector:
+    node-role.aiplatform/system: "true"

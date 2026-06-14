@@ -1,0 +1,93 @@
+# oauth2-proxy values, chart 10.4.x.
+# Lives in the mlflow namespace; will gate all browser access to MLflow.
+# Trust to the platform CA (which signs https://keycloak.aiplatform.local) is
+# provided by mounting Secret 'aiplatform-ca' under /etc/ssl/aiplatform/ca.crt
+# and pointing the proxy at it via SSL_CERT_FILE.
+config:
+  existingSecret: oauth2-proxy-credentials
+  configFile: |-
+    provider                 = "keycloak-oidc"
+    oidc_issuer_url          = "https://keycloak.aiplatform.local/realms/aiplatform"
+    redirect_url             = "https://mlflow.aiplatform.local/oauth2/callback"
+    upstreams                = ["http://mlflow.mlflow.svc.cluster.local:5000"]
+    email_domains            = ["*"]
+    pass_authorization_header = true
+    pass_access_token         = true
+    set_authorization_header  = true
+    set_xauthrequest          = true
+    cookie_secure             = true
+    cookie_samesite           = "lax"
+    cookie_refresh            = "1h"
+    cookie_expire             = "12h"
+    skip_provider_button      = false
+    reverse_proxy             = true
+    whitelist_domains         = [".aiplatform.local"]
+    ssl_insecure_skip_verify  = false
+
+extraArgs:
+  metrics-address: "0.0.0.0:9100"
+  scope: "openid email profile groups"
+
+# Mount the platform CA so oauth2-proxy can verify Keycloak's TLS certificate.
+extraVolumes:
+  - name: ca-bundle
+    secret:
+      secretName: aiplatform-ca
+      items:
+        - key: ca.crt
+          path: aiplatform-ca.crt
+
+extraVolumeMounts:
+  - name: ca-bundle
+    mountPath: /etc/ssl/aiplatform
+    readOnly: true
+
+extraEnv:
+  - name: SSL_CERT_FILE
+    value: /etc/ssl/aiplatform/aiplatform-ca.crt
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 30m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+nodeSelector:
+  node-role.aiplatform/system: "true"
+
+# Restricted-PSA compatible.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  type: ClusterIP
+  portNumber: 80
+
+ingress:
+  enabled: false
+
+# Pod labels so VirtualService/NetworkPolicy selectors match.
+extraLabels:
+  app.kubernetes.io/component: ingress-auth
+
+metrics:
+  enabled: false

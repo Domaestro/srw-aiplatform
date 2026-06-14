@@ -1,0 +1,12 @@
+---
+- name: Run 01_create_cluster.sh
+  ansible.builtin.shell: "{{ (scripts_dir + '/01_create_cluster.sh') | quote }}"
+  register: result
+  changed_when: '"already exists" not in result.stdout'
+  environment:
+    CLUSTER_NAME: "{{ cluster_name }}"
+    K3S_IMAGE:    "rancher/k3s:{{ versions.k3s }}"
+
+- name: Display script output (last 20 lines)
+  ansible.builtin.debug:
+    msg: "{{ result.stdout_lines[-20:] if result.stdout_lines | length > 20 else result.stdout_lines }}"

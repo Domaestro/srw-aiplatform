@@ -1,0 +1,24 @@
+# TLS certificate for MinIO server, signed by the platform CA.
+# DNS names cover both the cluster-internal Service DNS and the external host alias
+# used by the host /etc/hosts (minio.aiplatform.local).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: minio-tls
+  namespace: minio
+spec:
+  secretName: minio-tls
+  duration: 8760h     # 1 year
+  renewBefore: 720h   # 30 days
+  commonName: minio.aiplatform.local
+  dnsNames:
+    - minio.aiplatform.local
+    - minio.minio.svc.cluster.local
+    - minio.minio.svc
+    - minio.minio
+    - minio
+    - "*.minio.svc.cluster.local"
+  issuerRef:
+    name: aiplatform-ca
+    kind: ClusterIssuer
+    group: cert-manager.io

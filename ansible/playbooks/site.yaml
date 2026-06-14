@@ -1,0 +1,23 @@
+---
+# Главный playbook: bootstrap всего MVP-прототипа в правильном порядке.
+# Каждая роль обёртывает один из скриптов prototype/scripts/00..13.
+- name: Bootstrap secured AI platform MVP
+  hosts: platform
+  gather_facts: true
+  vars:
+    ansible_user_id: "{{ lookup('env', 'USER') }}"
+  roles:
+    - { role: prereqs,             tags: ["prereqs"] }
+    - { role: cluster,             tags: ["cluster"] }
+    - { role: base,                tags: ["base"] }
+    - { role: cert_manager,        tags: ["cert-manager", "tls"] }
+    - { role: minio,               tags: ["minio", "storage"] }
+    - { role: postgresql,          tags: ["postgresql", "storage"] }
+    - { role: minio_users,         tags: ["minio-users", "storage"] }
+    - { role: mlflow,              tags: ["mlflow"] }
+    - { role: istio,               tags: ["istio", "mesh"] }
+    - { role: keycloak,            tags: ["keycloak", "identity"] }
+    - { role: oauth2_proxy,        tags: ["oauth2-proxy", "identity"] }
+    - { role: argo_workflows,      tags: ["argo", "ml"] }
+    - { role: training_operator,   tags: ["training-operator", "ml"] }
+    - { role: monitoring,          tags: ["monitoring", "observability"] }

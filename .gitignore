@@ -1,0 +1,30 @@
+# Секреты и локальное состояние (генерируются при развёртывании)
+**/.local/
+*.secret
+*.key
+*.pem
+
+# Выводы тестов и сканирований
+tests/.results/
+
+# Артефакты сборки LaTeX
+*.aux
+*.log
+*.toc
+*.nav
+*.out
+*.snm
+*.fls
+*.fdb_latexmk
+*.bbl
+*.bcf
+*.run.xml
+*.lof
+*.lot
+*.synctex.gz
+
+# Редакторы и ОС
+.~lock*
+.DS_Store
+__pycache__/
+*.pyc

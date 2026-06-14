@@ -1,0 +1,69 @@
+# NetworkPolicies for oauth2-proxy.
+# Ingress: from Istio ingress gateway (browser traffic).
+# Egress : to mlflow upstream (5000), to Keycloak (over Istio Gateway HTTPS on 443),
+#          to DNS already covered by allow-dns-egress in the namespace.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-oauth2-proxy-ingress
+  namespace: mlflow
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: oauth2-proxy
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-ingress
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 4180
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-oauth2-proxy-egress
+  namespace: mlflow
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: oauth2-proxy
+  policyTypes:
+    - Egress
+  egress:
+    # MLflow upstream
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mlflow
+      ports:
+        - protocol: TCP
+          port: 5000
+    # Keycloak OIDC discovery / token endpoint (via Istio ingress gateway, since
+    # oauth2-proxy reaches Keycloak by its public hostname keycloak.aiplatform.local).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-ingress
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+    # Direct path to Keycloak in case discovery resolves to cluster DNS.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keycloak
+          podSelector:
+            matchLabels:
+              app: keycloak
+      ports:
+        - protocol: TCP
+          port: 8080

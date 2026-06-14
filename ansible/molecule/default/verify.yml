@@ -1,0 +1,26 @@
+---
+# Шаг verify: запускает набор функциональных проверок и проверок безопасности
+# из главы 2 и убеждается, что ни одна проверка не завершилась отказом.
+- name: Verify
+  hosts: platform
+  gather_facts: false
+  vars:
+    tests_runner: "{{ playbook_dir }}/../../../tests/run_all.sh"
+  tasks:
+    - name: Запуск набора функциональных проверок и проверок безопасности
+      ansible.builtin.command:
+        argv:
+          - "{{ tests_runner }}"
+      register: tests
+      changed_when: false
+
+    - name: Показать сводку прогона
+      ansible.builtin.debug:
+        var: tests.stdout_lines
+
+    - name: Все проверки пройдены без отказов
+      ansible.builtin.assert:
+        that:
+          - tests.stdout_lines | select('match', '^FAIL ') | list | length == 0
+        fail_msg: "Обнаружены непройденные проверки в выводе run_all.sh"
+        success_msg: "Все проверки пройдены успешно"

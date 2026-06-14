@@ -1,0 +1,9 @@
+---
+- name: Run 04_install_minio.sh
+  ansible.builtin.shell: "{{ (scripts_dir + '/04_install_minio.sh') | quote }}"
+  register: result
+  changed_when: '"no change" not in result.stdout'
+
+- name: Display script output (last 20 lines)
+  ansible.builtin.debug:
+    msg: "{{ result.stdout_lines[-20:] if result.stdout_lines | length > 20 else result.stdout_lines }}"

@@ -1,0 +1,15 @@
+---
+- name: Tear down platform
+  hosts: platform
+  gather_facts: false
+  tasks:
+    - name: Run 99_teardown.sh
+      ansible.builtin.shell: "{{ (scripts_dir + '/99_teardown.sh') | quote }}"
+      register: teardown_result
+      changed_when: '"does not exist" not in teardown_result.stdout'
+      environment:
+        CLUSTER_NAME: "{{ cluster_name }}"
+
+    - name: Display teardown output
+      ansible.builtin.debug:
+        msg: "{{ teardown_result.stdout_lines[-20:] if teardown_result.stdout_lines | length > 20 else teardown_result.stdout_lines }}"

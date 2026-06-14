@@ -1,0 +1,152 @@
+# Demo Argo Workflow run in team-demo namespace.
+# Three-step ML-style pipeline:
+#   1. fetch-data    — generate a tiny synthetic dataset
+#   2. train         — pretend to train a model (uses Python image)
+#   3. log-mlflow    — register the result in MLflow tracking server
+# Every step runs in the team-demo namespace under the argo-workflow ServiceAccount,
+# inheriting tenant-quota and PSA restricted constraints.
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: demo-pipeline-
+  namespace: team-demo
+spec:
+  entrypoint: pipeline
+  serviceAccountName: argo-workflow
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  # podSpecPatch is applied by argo-workflows to EVERY pod it creates (including
+  # the init/wait sidecars injected by the emissary executor). This is the only
+  # documented way to satisfy 'restricted' PSA without dropping the namespace
+  # to 'baseline'.
+  podSpecPatch: |
+    initContainers:
+      - name: init
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
+    containers:
+      - name: wait
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
+  templates:
+    - name: pipeline
+      steps:
+        - - name: fetch
+            template: fetch-data
+        - - name: train
+            template: train
+            arguments:
+              parameters:
+                - name: dataset
+                  value: "{{steps.fetch.outputs.parameters.dataset-size}}"
+        - - name: log-result
+            template: log-to-mlflow
+            arguments:
+              parameters:
+                - name: rmse
+                  value: "{{steps.train.outputs.parameters.rmse}}"
+
+    - name: fetch-data
+      outputs:
+        parameters:
+          - name: dataset-size
+            valueFrom:
+              path: /tmp/out/size.txt
+      container:
+        image: python:3.12-alpine
+        command: ["sh", "-c"]
+        args:
+          - |
+            mkdir -p /tmp/out
+            python -c "import random; print(random.randint(100,500))" > /tmp/out/size.txt
+            echo "fetched a dataset of size $(cat /tmp/out/size.txt) rows"
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities: { drop: ["ALL"] }
+          seccompProfile: { type: RuntimeDefault }
+        volumeMounts:
+          - name: out
+            mountPath: /tmp/out
+      volumes:
+        - name: out
+          emptyDir: {}
+
+    - name: train
+      inputs:
+        parameters:
+          - name: dataset
+      outputs:
+        parameters:
+          - name: rmse
+            valueFrom:
+              path: /tmp/out/rmse.txt
+      container:
+        image: python:3.12-alpine
+        command: ["sh", "-c"]
+        args:
+          - |
+            mkdir -p /tmp/out
+            python -c "
+            import random, sys
+            size = {{inputs.parameters.dataset}}
+            rmse = round(random.uniform(0.05, 0.25), 4)
+            print(f'training on {size} rows, got rmse={rmse}', file=sys.stderr)
+            print(rmse, end='')
+            " > /tmp/out/rmse.txt
+            echo "[train] wrote rmse=$(cat /tmp/out/rmse.txt)" >&2
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities: { drop: ["ALL"] }
+          seccompProfile: { type: RuntimeDefault }
+        volumeMounts:
+          - name: out
+            mountPath: /tmp/out
+      volumes:
+        - name: out
+          emptyDir: {}
+
+    - name: log-to-mlflow
+      inputs:
+        parameters:
+          - name: rmse
+      container:
+        image: ghcr.io/mlflow/mlflow:v2.20.1
+        command: ["sh", "-c"]
+        args:
+          - |
+            python -c "
+            import os, mlflow
+            mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
+            mlflow.set_experiment('argo-demo')
+            with mlflow.start_run():
+                mlflow.log_param('source', 'argo-workflow')
+                mlflow.log_metric('rmse', float('{{inputs.parameters.rmse}}'))
+                print('logged rmse to mlflow')
+            "
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: "http://mlflow.mlflow.svc.cluster.local:5000"
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities: { drop: ["ALL"] }
+          seccompProfile: { type: RuntimeDefault }

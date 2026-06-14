@@ -1,0 +1,96 @@
+# NetworkPolicies for Keycloak.
+# Ingress: from istio-ingress (for browser SSO) and from any namespace with role=tenant
+#          plus 'mlflow' (oauth2-proxy lives there, see Iter 4c).
+# Egress : to Postgres (5432) — Keycloak uses the same in-cluster PG instance with a
+#          dedicated 'keycloak' database.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-keycloak-ingress
+  namespace: keycloak
+spec:
+  podSelector:
+    matchLabels:
+      app: keycloak
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-ingress
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mlflow
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kubeflow
+        - namespaceSelector:
+            matchLabels:
+              aiplatform.local/role: tenant
+        - podSelector: {}                  # in-namespace probes / sidecars
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 9000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-keycloak-egress-postgres
+  namespace: keycloak
+spec:
+  podSelector:
+    matchLabels:
+      app: keycloak
+  policyTypes:
+    - Egress
+  egress:
+    # PostgreSQL (in mlflow namespace) — Keycloak uses its own database there.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mlflow
+          podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Istio control-plane (istiod) — sidecar config push, xDS.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15012
+        - protocol: TCP
+          port: 15014
+---
+# Allow ingress to PostgreSQL from Keycloak as well (companion to the existing
+# allow-mlflow-to-postgres in postgres-netpol.yaml, which only permitted MLflow).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-keycloak-to-postgres
+  namespace: mlflow
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keycloak
+          podSelector:
+            matchLabels:
+              app: keycloak
+      ports:
+        - protocol: TCP
+          port: 5432

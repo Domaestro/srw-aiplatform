@@ -1,0 +1,61 @@
+# Allow rules for the MinIO namespace.
+# - Ingress on ports 9000/9001 from mlflow, kubeflow, team-* namespaces.
+# - Egress already restricted by default-deny + DNS; we add an explicit allowance for
+#   the kube-apiserver IP so cert-manager-issued secrets can be mounted (not strictly
+#   required for MinIO itself, but kept for symmetry with other components).
+---
+# Ingress: allow the MinIO server pod (label app=minio) to receive traffic from
+# - any pod in the local minio namespace (chart post-install hooks invoke mc against the API)
+# - the mlflow namespace (artifact uploads/downloads)
+# - any tenant namespace (team-* labelled with aiplatform.local/role=tenant)
+# - the kubeflow namespace (once Iter 5 brings it up).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-minio-ingress
+  namespace: minio
+spec:
+  podSelector:
+    matchLabels:
+      app: minio
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}        # any pod in the same (minio) namespace
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mlflow
+        - namespaceSelector:
+            matchLabels:
+              aiplatform.local/role: tenant
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kubeflow
+      ports:
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9001
+---
+# Egress: pods inside the minio namespace (notably the post-install hook running mc)
+# must be able to reach the MinIO Service (cluster DNS resolves to a ClusterIP).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-minio
+  namespace: minio
+spec:
+  podSelector: {}                  # applies to every pod in the namespace
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9001

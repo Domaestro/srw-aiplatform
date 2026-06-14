@@ -1,0 +1,163 @@
+# Keycloak 26 deployment in the keycloak namespace.
+# - Backed by the same in-cluster PostgreSQL (separate database 'keycloak').
+# - Realm 'aiplatform' is provisioned at startup from a mounted JSON template
+#   (configmap 'aiplatform-realm-template'). Pre-create the database with the
+#   keycloak-postgres-init Job below.
+# - Istio sidecar is injected to wire mTLS into the mesh.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  selector:
+    app: keycloak
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+      annotations:
+        sidecar.istio.io/inject: "true"
+    spec:
+      nodeSelector:
+        node-role.aiplatform/system: "true"
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.0
+          imagePullPolicy: IfNotPresent
+          # 'start --import-realm' boots into production mode using the JSON file
+          # in /opt/keycloak/data/import/.
+          # 'start --import-realm' boots the server; we omit --optimized so the
+          # container performs its own build step at startup, picking up KC_DB and
+          # other env-driven build-time options.
+          args: ["start", "--import-realm"]
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: username
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: jdbc:postgresql://postgres.mlflow.svc.cluster.local:5432/keycloak
+            - name: KC_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-credentials
+                  key: username
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-credentials
+                  key: password
+            # KC_HOSTNAME is intentionally NOT pinned to a fixed URL.
+            # With hostname-strict=false Keycloak derives all frontend URLs from
+            # the incoming request (Host + X-Forwarded-* headers). This lets:
+            #   - oauth2-proxy reach it via the cluster path (Host:
+            #     keycloak.aiplatform.local, X-Forwarded-Proto: https set by Istio)
+            #     and get issuer = https://keycloak.aiplatform.local — SSO works;
+            #   - a developer reach the admin/account console via a plain
+            #     localhost:8090 port-forward without being redirected to the
+            #     unreachable keycloak.aiplatform.local hostname.
+            # A fixed KC_HOSTNAME would force every UI redirect to that single
+            # hostname, which is not browser-reachable through a port-forward.
+            - name: KC_HOSTNAME_STRICT
+              value: "false"
+            - name: KC_HOSTNAME_STRICT_HTTPS
+              value: "false"
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_PROXY_HEADERS
+              value: "xforwarded"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_METRICS_ENABLED
+              value: "true"
+            - name: KC_LOG_LEVEL
+              value: INFO
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: realm-template
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          # Management interface (port 9000) exposes /health/ready
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+      volumes:
+        - name: realm-template
+          configMap:
+            name: aiplatform-realm-template
+        - name: tmp
+          emptyDir: {}

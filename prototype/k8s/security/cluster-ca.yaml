@@ -1,0 +1,47 @@
+# Local self-signed root CA and a ClusterIssuer that signs all platform certificates.
+#
+# The chain is:
+#   selfsigned-bootstrap (ClusterIssuer, no-op signer)
+#     -> aiplatform-root-ca (Certificate of type CA, stored as Secret in cert-manager ns)
+#       -> aiplatform-ca (ClusterIssuer, signs leaf certs cluster-wide)
+#
+# The root CA secret can later be extracted with:
+#   kubectl -n cert-manager get secret aiplatform-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d
+# and imported into the host trust store so the browser does not warn on *.aiplatform.local.
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: aiplatform-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: aiplatform-root-ca
+  subject:
+    organizations:
+      - aiplatform.local
+  duration: 87600h        # 10 years for a private root
+  renewBefore: 720h
+  secretName: aiplatform-root-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: aiplatform-ca
+spec:
+  ca:
+    secretName: aiplatform-root-ca

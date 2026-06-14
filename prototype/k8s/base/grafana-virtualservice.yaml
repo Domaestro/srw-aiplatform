@@ -1,0 +1,23 @@
+# Route https://grafana.aiplatform.local through the shared Istio Gateway
+# directly to Grafana. In production the same oauth2-proxy pattern as in Iter 4c
+# should be applied; for the MVP we accept Grafana's own login (admin user from
+# Secret 'grafana-admin' in monitoring namespace).
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  hosts:
+    - grafana.aiplatform.local
+  gateways:
+    - istio-ingress/aiplatform-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: kps-grafana.monitoring.svc.cluster.local
+            port:
+              number: 80

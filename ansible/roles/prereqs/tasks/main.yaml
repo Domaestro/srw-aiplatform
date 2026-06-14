@@ -1,0 +1,17 @@
+---
+- name: Verify docker is on host
+  ansible.builtin.command: docker --version
+  register: docker_check
+  changed_when: false
+
+- name: Run 00_install_prereqs.sh (installs k3d and helm)
+  ansible.builtin.shell: "{{ (scripts_dir + '/00_install_prereqs.sh') | quote }}"
+  register: prereqs_out
+  changed_when: '"already installed" not in prereqs_out.stdout'
+  environment:
+    K3D_VERSION:  "{{ versions.k3d }}"
+    HELM_VERSION: "{{ versions.helm }}"
+
+- name: Display script output
+  ansible.builtin.debug:
+    msg: "{{ prereqs_out.stdout_lines[-20:] if prereqs_out.stdout_lines | length > 20 else prereqs_out.stdout_lines }}"

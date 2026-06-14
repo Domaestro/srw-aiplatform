@@ -1,0 +1,40 @@
+# Istiod control plane values, slim profile fit for a 16 GB host.
+pilot:
+  autoscaleEnabled: false
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 512Mi
+  nodeSelector:
+    node-role.aiplatform/system: "true"
+  env:
+    # Discovery limits — keep watch budget small for a 4-node test cluster.
+    PILOT_TRACE_SAMPLING: "0.5"
+
+# Sidecar defaults — keep them light so each injected pod stays within tenant quota.
+global:
+  proxy:
+    resources:
+      requests:
+        cpu: 30m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    logLevel: warning
+
+meshConfig:
+  # Tighten outbound: only registered services are reachable from the mesh.
+  # NOTE: kept as ALLOW_ANY for the MVP to avoid breaking existing egress paths;
+  # production deployments switch to REGISTRY_ONLY after auditing all destinations.
+  outboundTrafficPolicy:
+    mode: ALLOW_ANY
+  enableAutoMtls: true
+  defaultConfig:
+    holdApplicationUntilProxyStarts: true
+    proxyMetadata:
+      ISTIO_META_DNS_CAPTURE: "true"

@@ -1,0 +1,23 @@
+# Browser-facing route for MLflow.
+# All traffic for https://mlflow.aiplatform.local goes through oauth2-proxy first.
+# oauth2-proxy itself forwards to mlflow.mlflow.svc.cluster.local:5000 (see chart
+# 'upstreams' config). No direct VirtualService to mlflow.mlflow:5000 from outside.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: mlflow
+  namespace: mlflow
+spec:
+  hosts:
+    - mlflow.aiplatform.local
+  gateways:
+    - istio-ingress/aiplatform-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: oauth2-proxy.mlflow.svc.cluster.local
+            port:
+              number: 80

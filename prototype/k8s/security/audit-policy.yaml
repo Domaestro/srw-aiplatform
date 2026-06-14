@@ -1,0 +1,62 @@
+# Kubernetes audit policy for the secured AI platform.
+# Strategy: log Metadata for most requests, log RequestResponse for security-sensitive resources.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - RequestReceived
+
+rules:
+  # Don't log requests to non-resource URLs and read-only system probes
+  - level: None
+    nonResourceURLs:
+      - /healthz*
+      - /livez*
+      - /readyz*
+      - /version
+      - /api
+      - /apis
+      - /metrics
+      - /swagger*
+      - /openapi*
+
+  # Don't log routine kubelet/system watches and lists on common verbs
+  - level: None
+    users: ["system:kube-proxy", "system:kube-controller-manager", "system:kube-scheduler"]
+    verbs: ["watch", "list", "get"]
+
+  # Log everything that touches RBAC, secrets, service accounts, certs at the highest level
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources: ["secrets", "serviceaccounts", "serviceaccounts/token"]
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+      - group: "certificates.k8s.io"
+        resources: ["certificatesigningrequests"]
+      - group: "policy"
+        resources: ["podsecuritypolicies"]
+      - group: "networking.k8s.io"
+        resources: ["networkpolicies"]
+
+  # Authentication review and impersonation
+  - level: RequestResponse
+    resources:
+      - group: "authentication.k8s.io"
+      - group: "authorization.k8s.io"
+
+  # Exec / attach / portforward into pods — high-risk operations
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources: ["pods/exec", "pods/attach", "pods/portforward"]
+
+  # Write operations on workloads — log request and metadata
+  - level: Request
+    verbs: ["create", "update", "patch", "delete", "deletecollection"]
+    resources:
+      - group: ""
+      - group: "apps"
+      - group: "batch"
+
+  # Everything else — metadata-level logging
+  - level: Metadata

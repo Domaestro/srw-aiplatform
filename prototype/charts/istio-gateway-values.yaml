@@ -1,0 +1,32 @@
+# Istio ingress gateway values.
+# Listens on the k3d-mapped host ports 8080->80 and 8443->443.
+service:
+  type: ClusterIP
+  # NOTE: k3d's serverlb already exposes :80 and :443 on host ports 8080 and 8443;
+  # routing reaches the gateway via the Kubernetes Service.
+  ports:
+    - name: status-port
+      port: 15021
+      targetPort: 15021
+    - name: http2
+      port: 80
+      targetPort: 8080
+    - name: https
+      port: 443
+      targetPort: 8443
+
+autoscaling:
+  enabled: false
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+nodeSelector:
+  node-role.aiplatform/system: "true"

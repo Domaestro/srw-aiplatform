@@ -1,0 +1,20 @@
+# istio-cni values.
+# This chart deploys a DaemonSet that programs iptables on each node, so that
+# injected workload pods no longer require their own NET_ADMIN initContainer.
+# The DaemonSet itself is privileged — but it is confined to the istio-system
+# namespace (which is already excluded from the cluster-wide PSA enforcement).
+cni:
+  chained: true
+  cniBinDir: /opt/cni/bin
+  cniConfDir: /etc/cni/net.d
+  excludeNamespaces:
+    - kube-system
+    - istio-system
+nodeSelector: {}
+resources:
+  requests:
+    cpu: 30m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

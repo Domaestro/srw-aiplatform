@@ -1,0 +1,28 @@
+# Adds an in-cluster DNS zone for *.aiplatform.local that resolves every browser
+# hostname to the Istio ingress gateway Service. This lets in-cluster clients
+# (oauth2-proxy, future Kubeflow integrations, ...) follow the same TLS path as
+# external browsers and reuse the wildcard certificate signed by aiplatform-ca.
+#
+# k3s mounts /etc/coredns/custom/*.server into CoreDNS, so dropping a file into
+# this ConfigMap is the supported extension point.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  aiplatform.server: |
+    aiplatform.local:53 {
+      errors
+      cache 30
+      rewrite name exact keycloak.aiplatform.local istio-ingressgateway.istio-ingress.svc.cluster.local
+      rewrite name exact mlflow.aiplatform.local   istio-ingressgateway.istio-ingress.svc.cluster.local
+      rewrite name exact kubeflow.aiplatform.local istio-ingressgateway.istio-ingress.svc.cluster.local
+      rewrite name exact grafana.aiplatform.local  istio-ingressgateway.istio-ingress.svc.cluster.local
+      rewrite name exact minio.aiplatform.local    istio-ingressgateway.istio-ingress.svc.cluster.local
+      kubernetes cluster.local in-addr.arpa ip6.arpa {
+        pods insecure
+        fallthrough in-addr.arpa ip6.arpa
+      }
+      forward . /etc/resolv.conf
+    }

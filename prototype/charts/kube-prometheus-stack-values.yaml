@@ -1,0 +1,128 @@
+# kube-prometheus-stack values, chart 85.2.x.
+# Slim profile suitable for a 16 GB host. Disables features that would balloon
+# memory/disk: AlertManager (no SMTP server anyway), thanos sidecar, push-gateway.
+fullnameOverride: kps
+
+# CRDs are part of the chart; keep them on upgrade so we don't drop ServiceMonitors.
+crds:
+  enabled: true
+
+# AlertManager disabled in MVP — alerts can be enabled in the testing phase.
+alertmanager:
+  enabled: false
+
+# Prometheus core.
+prometheus:
+  prometheusSpec:
+    nodeSelector:
+      node-role.aiplatform/system: "true"
+    replicas: 1
+    retention: 7d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 384Mi
+      limits:
+        cpu: 1
+        memory: 768Mi
+    # Pick up ServiceMonitor / PodMonitor / PrometheusRule from ALL namespaces.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    # On-disk TSDB storage on the local-path provisioner.
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: local-path
+          resources:
+            requests:
+              storage: 5Gi
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 2000
+      seccompProfile:
+        type: RuntimeDefault
+
+# Grafana with anonymous access disabled and admin password from a pre-generated Secret.
+grafana:
+  enabled: true
+  nodeSelector:
+    node-role.aiplatform/system: "true"
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 1Gi
+  serviceMonitor:
+    enabled: true
+  # The default dashboards shipped with the chart cover Kubernetes / nodes / kubelet
+  defaultDashboardsEnabled: true
+  # Anonymous access off; UI is gated by oauth2-proxy in a follow-up step.
+  grafana.ini:
+    auth.anonymous:
+      enabled: false
+    server:
+      root_url: "https://grafana.aiplatform.local/"
+      serve_from_sub_path: false
+  containerSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+    allowPrivilegeEscalation: false
+    capabilities: { drop: ["ALL"] }
+    readOnlyRootFilesystem: false
+    seccompProfile:
+      type: RuntimeDefault
+
+# Components we keep light:
+kubeStateMetrics:
+  enabled: true
+nodeExporter:
+  enabled: true
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+# k3s already exports its own metrics differently; skip these scrape jobs to avoid 'down' targets.
+kubeApiServer:
+  enabled: true
+kubelet:
+  enabled: true
+  serviceMonitor:
+    https: true
+kubeControllerManager:
+  enabled: false        # k3s embeds it; not separately scrapable
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+coreDns:
+  enabled: true
+
+# Default alerting rules are mostly safe; keep them on for the testing phase.
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeScheduler: false

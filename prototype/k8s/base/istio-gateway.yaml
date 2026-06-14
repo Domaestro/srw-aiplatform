@@ -1,0 +1,50 @@
+# Wildcard Istio Gateway terminating TLS for all *.aiplatform.local hosts.
+# - Certificate is issued by cert-manager from ClusterIssuer aiplatform-ca and
+#   placed in secret 'wildcard-aiplatform-tls' in the istio-ingress namespace.
+# - VirtualServices for individual services (mlflow, keycloak, ...) reference
+#   this Gateway by name 'aiplatform-gateway' in the istio-ingress namespace.
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-aiplatform-tls
+  namespace: istio-ingress
+spec:
+  secretName: wildcard-aiplatform-tls
+  duration: 8760h
+  renewBefore: 720h
+  commonName: "*.aiplatform.local"
+  dnsNames:
+    - "*.aiplatform.local"
+    - "aiplatform.local"
+  issuerRef:
+    name: aiplatform-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: aiplatform-gateway
+  namespace: istio-ingress
+spec:
+  selector:
+    istio: ingressgateway          # selector for istio/gateway chart default labels
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*.aiplatform.local"
+      tls:
+        httpsRedirect: true        # plain HTTP redirects to HTTPS
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts:
+        - "*.aiplatform.local"
+      tls:
+        mode: SIMPLE
+        credentialName: wildcard-aiplatform-tls
